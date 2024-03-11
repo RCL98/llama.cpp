@@ -80,6 +80,7 @@ struct gpt_params {
 
     llama_rope_scaling_type rope_scaling_type = LLAMA_ROPE_SCALING_TYPE_UNSPECIFIED;
     llama_pooling_type      pooling_type      = LLAMA_POOLING_TYPE_UNSPECIFIED; // pooling type for embeddings
+    bool manual_pooling = false; // use manual pooling
 
     // // sampling parameters
     struct llama_sampling_params sparams;

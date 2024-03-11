@@ -335,6 +335,8 @@ bool gpt_params_parse_ex(int argc, char ** argv, gpt_params & params) {
                 break;
             }
             params.yarn_beta_slow = std::stof(argv[i]);
+        } else if (arg == "--manual-pooling") {
+            params.manual_pooling = true;
         } else if (arg == "--pooling") {
             if (++i >= argc) {
                 invalid_param = true;

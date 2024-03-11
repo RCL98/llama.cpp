@@ -17,9 +17,25 @@ static std::vector<std::string> split_lines(const std::string & s) {
     return lines;
 }
 
-static void batch_add_seq(llama_batch & batch, const std::vector<int32_t> & tokens, int seq_id) {
+static void batch_add_seq(llama_batch & batch, const std::vector<int32_t> & tokens, int seq_id, bool all_tokens = false) {
     for (size_t i = 0; i < tokens.size(); i++) {
-        llama_batch_add(batch, tokens[i], i, { seq_id }, i == tokens.size() - 1);
+        llama_batch_add(batch, tokens[i], i, { seq_id }, all_tokens || i == tokens.size() - 1);
+    }
+}
+
+static void mean_pooling(const float * embd, float * out, int n_tokens, int n_embd) {
+    for (int i = 0; i < n_embd; i++) {
+        out[i] = 0;
+    }
+
+    for (int i = 0; i < n_tokens; i++) {
+        for (int j = 0; j < n_embd; j++) {
+            out[j] += embd[i * n_embd + j];
+        }
+    }
+
+    for (int i = 0; i < n_embd; i++) {
+        out[i] /= n_tokens;
     }
 }
 
@@ -50,6 +66,44 @@ static void batch_decode(llama_context * ctx, llama_batch & batch, float * outpu
 
         float * out = output + batch.seq_id[i][0] * n_embd;
         llama_embd_normalize(embd, out, n_embd);
+    }
+}
+
+static void batch_decode_with_manual_pooling(llama_context * ctx, llama_batch & batch, float * output, int n_seq, int n_embd) {
+
+    // clear previous kv_cache values (irrelevant for embeddings)
+    llama_kv_cache_clear(ctx);
+
+    // run model
+    fprintf(stderr, "%s: n_tokens = %d, n_seq = %d\n", __func__, batch.n_tokens, n_seq);
+    if (llama_decode(ctx, batch) < 0) {
+        fprintf(stderr, "%s : failed to decode\n", __func__);
+    }
+
+    float *temp_out = (float *) malloc (batch.n_tokens * n_embd * sizeof(float));
+    int token_of_seq = 0;
+    for (int i = 0; i < batch.n_tokens; i++) {
+        if (!batch.logits[i]) {
+            continue;
+        }
+
+        const float * embd = embd = llama_get_embeddings_ith(ctx, i);
+        if (embd == NULL) {
+            fprintf(stderr, "%s: failed to get embeddings for token %d\n", __func__, i);
+            continue;
+        }
+
+        memcpy(temp_out + i * n_embd, embd, n_embd * sizeof(float));
+        if (i != 0 && batch.pos[i] == 0) {
+            float *seq_tokens = (float *) malloc(token_of_seq * n_embd * sizeof(float));
+            memcpy(seq_tokens, temp_out + (i - token_of_seq) * n_embd, token_of_seq * n_embd * sizeof(float));
+            mean_pooling(seq_tokens, output + batch.seq_id[i - 1][0] * n_embd, token_of_seq, n_embd);
+
+            token_of_seq = 0;
+            free(seq_tokens);
+        }
+        
+        token_of_seq++;
     }
 }
 
@@ -152,14 +206,18 @@ int main(int argc, char ** argv) {
         // encode if at capacity
         if (batch.n_tokens + n_toks > n_batch) {
             float * out = emb + p * n_embd;
-            batch_decode(ctx, batch, out, s, n_embd);
+            if (params.manual_pooling) {
+                batch_decode_with_manual_pooling(ctx, batch, out, s, n_embd);
+            } else {
+                batch_decode(ctx, batch, out, s, n_embd);
+            }
             llama_batch_clear(batch);
             p += s;
             s = 0;
         }
 
         // add to batch
-        batch_add_seq(batch, inp, s);
+        batch_add_seq(batch, inp, s, params.manual_pooling);
         s += 1;
     }
 
@@ -167,15 +225,24 @@ int main(int argc, char ** argv) {
     float * out = emb + p * n_embd;
     batch_decode(ctx, batch, out, s, n_embd);
 
-    // print first 3 embeddings
-    for (int j = 0; j < std::min(3, n_prompts); j++) {
-        fprintf(stderr, "embedding %d: ", j);
-        for (int i = 0; i < n_embd; i++) {
-            fprintf(stderr, "%f ", emb[j * n_embd + i]);
+    if (params.logits_file != "") {
+        fprintf(stderr, "\nwriting %d embeddings of size %d to %s\n", n_prompts, n_embd, params.logits_file.c_str());
+        FILE * f = fopen(params.logits_file.c_str(), "wb");
+        if (f) {
+            fwrite(emb, sizeof(float), n_prompts * n_embd, f);
+            fclose(f);
         }
-        fprintf(stderr, "\n\n");
+    } else {
+        // print first 3 embeddings
+        for (int j = 0; j < std::min(3, n_prompts); j++) {
+            fprintf(stderr, "embedding %d: ", j);
+            for (int i = 0; i < (int) n_embd; i++) {
+                fprintf(stderr, "%f ", emb[j * n_embd + i]);
+            }
+            fprintf(stderr, "\n\n");
+        }
+        fprintf(stderr, "\n");
     }
-    fprintf(stderr, "\n");
 
     // clean up
     llama_print_timings(ctx);
