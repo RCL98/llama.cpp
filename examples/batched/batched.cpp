@@ -48,6 +48,8 @@ int main(int argc, char ** argv) {
         params.prompt = "Hello my name is";
     }
 
+    process_escapes(params.prompt);
+
     // init LLM
 
     llama_backend_init();
@@ -78,9 +80,9 @@ int main(int argc, char ** argv) {
     llama_context_params ctx_params = llama_context_default_params();
 
     ctx_params.seed  = 1234;
-    ctx_params.n_ctx = n_kv_req;
+    ctx_params.n_ctx   = n_kv_req;
     ctx_params.n_batch = std::max(n_len, n_parallel);
-    ctx_params.n_parallel      = n_parallel;
+    ctx_params.n_seq_max       = n_parallel;
     ctx_params.n_threads       = params.n_threads;
     ctx_params.n_threads_batch = params.n_threads_batch == -1 ? params.n_threads : params.n_threads_batch;
 

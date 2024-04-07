@@ -40,7 +40,7 @@ if [ ! -z ${GG_BUILD_METAL} ]; then
 fi
 
 if [ ! -z ${GG_BUILD_CUDA} ]; then
-    CMAKE_EXTRA="${CMAKE_EXTRA} -DLLAMA_CUBLAS=1"
+    CMAKE_EXTRA="${CMAKE_EXTRA} -DLLAMA_CUDA=1"
 fi
 
 if [ ! -z ${GG_BUILD_SYCL} ]; then
@@ -412,8 +412,8 @@ function gg_run_open_llama_7b_v2 {
 
     set -e
 
-    (time cmake -DCMAKE_BUILD_TYPE=Release ${CMAKE_EXTRA} -DLLAMA_CUBLAS=1 .. ) 2>&1 | tee -a $OUT/${ci}-cmake.log
-    (time make -j                                                             ) 2>&1 | tee -a $OUT/${ci}-make.log
+    (time cmake -DCMAKE_BUILD_TYPE=Release ${CMAKE_EXTRA} -DLLAMA_CUDA=1 .. ) 2>&1 | tee -a $OUT/${ci}-cmake.log
+    (time make -j                                                           ) 2>&1 | tee -a $OUT/${ci}-make.log
 
     python3 ../convert.py ${path_models}
 
@@ -575,7 +575,7 @@ function gg_run_embd_bge_small {
     cd ${SRC}
 
     gg_wget models-mnt/bge-small/ https://huggingface.co/BAAI/bge-small-en-v1.5/raw/main/config.json
-    gg_wget models-mnt/bge-small/ https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.model
+    gg_wget models-mnt/bge-small/ https://huggingface.co/BAAI/bge-small-en-v1.5/raw/main/tokenizer.json
     gg_wget models-mnt/bge-small/ https://huggingface.co/BAAI/bge-small-en-v1.5/raw/main/tokenizer_config.json
     gg_wget models-mnt/bge-small/ https://huggingface.co/BAAI/bge-small-en-v1.5/raw/main/special_tokens_map.json
     gg_wget models-mnt/bge-small/ https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/pytorch_model.bin
